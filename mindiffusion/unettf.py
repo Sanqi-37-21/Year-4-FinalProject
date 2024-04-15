@@ -5,20 +5,25 @@ import tensorflow as tf
 
 # https://arxiv.org/pdf/1803.08494v3.pdf  change the [N,C,H,W] to [N,H,W,C]
 class GroupNorm(tf.keras.layers.Layer):
-    def __init__(self, groups: int, channels: int, eps=1e-5) -> None:
+    def __init__(self, groups: int, channels: int, eps=1e-5, name=None) -> None:
         super().__init__()
         self.groups = groups
         self.eps = eps
+        # one for gamma found in PyTorch documentation called weights
         self.gamma = self.add_weight(name='gamma', shape=(1, 1, 1, channels), initializer='ones', trainable=True)
+        # zero for bet found in PyTorch documentation called bias
         self.beta = self.add_weight(name='beta', shape=(1, 1, 1, channels), initializer='zeros', trainable=True)
     def call(self, x):
         # x: input features with shape [N,H,W,C]
         # gamma, beta: scale and offset, with shape [1,1,1,C]
-        # G: number of groups for GN
         N, H, W, C = x.shape
-        x = tf.reshape(x, [N, H, W, self.groups, C // self.groups, ])
+        # reshape to number of groups with channel/group channels
+        x = tf.reshape(x, [N, H, W, self.groups, C // self.groups])
+        # calculate varience and mean for H, W, C // groups
         mean, var = tf.nn.moments(x, [1, 2, 4], keepdims=True)
+        # normalize the original data
         x = (x - mean) / tf.sqrt(var + self.eps)
+        # reshape back to normal form of tensor
         x = tf.reshape(x, [N, H, W, C])
         return x * self.gamma + self.beta
 
@@ -27,10 +32,12 @@ class Conv3(tf.keras.Model):
         self, in_channels: int, out_channels: int, is_res: bool = False
     ) -> None:
         super().__init__()
-        # sequential 需要加 []
+        # sequential need add []
         self.main = tf.keras.Sequential([
+            # Conv2d
             tf.keras.layers.Conv2D(filters=out_channels, kernel_size=3, strides=1, padding='same'),
             GroupNorm(groups=8, channels=out_channels),
+            # relu
             tf.keras.layers.ReLU(),
         ])
         self.conv = tf.keras.Sequential([
@@ -68,6 +75,7 @@ class UnetUp(tf.keras.Model):
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super(UnetUp, self).__init__()
         layers = [
+            # nn.ConvTranspose2d
             tf.keras.layers.Conv2DTranspose(filters=out_channels, kernel_size=2, strides=2),
             Conv3(out_channels, out_channels),
             Conv3(out_channels, out_channels),
@@ -76,6 +84,7 @@ class UnetUp(tf.keras.Model):
 
     def call(self, x: tf.Tensor, skip: tf.Tensor) -> tf.Tensor:
         # tensorflow 中 concat 的 channel 在 -1
+        # torch.cat
         x = tf.concat((x, skip), -1)
         x = self.model(x)
 
@@ -85,13 +94,14 @@ class UnetUp(tf.keras.Model):
 class TimeSiren(tf.keras.Model):
     def __init__(self, emb_dim: int) -> None:
         super(TimeSiren, self).__init__()
-
+        # nn.Linear
         self.lin1 = tf.keras.layers.Dense(emb_dim, use_bias=False, input_shape=(1,))
         self.lin2 = tf.keras.layers.Dense(emb_dim)
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
         # 没有 view
         x = tf.reshape(x, [-1, 1])
+        # torch.sin
         x = tf.math.sin(self.lin1(x))
         x = self.lin2(x)
         return x
