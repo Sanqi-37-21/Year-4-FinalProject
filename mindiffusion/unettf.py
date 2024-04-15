@@ -83,7 +83,7 @@ class UnetUp(tf.keras.Model):
         self.model = tf.keras.Sequential([*layers])
 
     def call(self, x: tf.Tensor, skip: tf.Tensor) -> tf.Tensor:
-        # tensorflow 中 concat 的 channel 在 -1
+        # In tensorflow concat the channel is at [-1] axis
         # torch.cat
         x = tf.concat((x, skip), -1)
         x = self.model(x)
@@ -99,7 +99,7 @@ class TimeSiren(tf.keras.Model):
         self.lin2 = tf.keras.layers.Dense(emb_dim)
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
-        # 没有 view
+        # no view in  TenosrFlow
         x = tf.reshape(x, [-1, 1])
         # torch.sin
         x = tf.math.sin(self.lin1(x))
