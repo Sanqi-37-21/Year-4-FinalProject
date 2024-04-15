@@ -10,6 +10,8 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import time
+import os
+import subprocess
 
 
 
@@ -45,7 +47,7 @@ def extract(a, t, x_shape):
 
 
 #number of steps
-steps = 500
+steps = 100
 
 #initial beta
 beta = beta_increase(steps)
@@ -187,7 +189,7 @@ class SimpleUnet(nn.Module):
         self.downs = nn.ModuleList([Block(down_channels[i], down_channels[i + 1], \
                                           time_emb_dim) \
                                     for i in range(len(down_channels) - 1)])
-        # Upsample99
+        # Upsamples
         self.ups = nn.ModuleList([Block(up_channels[i], up_channels[i + 1], \
                                         time_emb_dim, up=True) \
                                   for i in range(len(up_channels) - 1)])
@@ -200,7 +202,6 @@ class SimpleUnet(nn.Module):
         t = self.time_mlp(timestep)
         # Initial conv
         x = self.conv0(x)
-        # print('thisis', x.shape)
         # Unet
         residual_inputs = []
         for down in self.downs:
@@ -212,8 +213,6 @@ class SimpleUnet(nn.Module):
             # Add residual x as additional channels
             x = torch.cat((x, residual_x), dim=1)
             x = up(x, t)
-        #print('shit is is ',x.shape)
-        #print(self.output(x).shape)
         return self.output(x)
 
 
@@ -226,8 +225,6 @@ print("Num params: ", sum(p.numel() for p in model.parameters()))
 def get_loss(model, x_0, t):
     x_noisy, noise = forward_step(x_0, t)
     noise_pred = model(x_noisy, t)
-    #print('noise shape', noise.shape)
-    #print('noise_pred shape', noise_pred.shape)
     return F.l1_loss(noise, noise_pred)
 
 
@@ -262,12 +259,13 @@ def sample_timestep(x, t):
 
 
 @torch.no_grad()
+# def sample_plot_image(milestone,filenumber):
 def sample_plot_image(milestone):
     # Sample noise
     img = torch.randn((1, 3, img_size, img_size), device=device)
-    plt.figure(figsize=(15, 15))
+    plt.figure(figsize=(1, 1))
     plt.axis('off')
-    num_images = 4
+    num_images = 1
     stepsize = int(steps / num_images)
 
     for i in range(0, steps)[::-1]:
@@ -279,18 +277,25 @@ def sample_plot_image(milestone):
         if i % stepsize == 0:
             plt.subplot(1, num_images, int(i / stepsize) + 1)
             reverse_trans(img.detach())
-    plt.savefig(f'1000output/out-{milestone}.png', dpi=300)
+    # plt.savefig(f'PyTorchOutput/testOutput{filenumber}/testOutput{filenumber}/out-{milestone}.png', dpi=84,bbox_inches='tight', pad_inches=0)
+    plt.savefig(f'1000output/out-{milestone}.png', dpi=84,bbox_inches='tight', pad_inches=0)
     plt.close()
 
 from torch.optim import Adam
 
 optimizer = Adam(model.parameters(), lr=0.001)
 #epochs = 5 # Try more!
-epochs = [50,100,150,200,250,300,350,400,450,500] # Try more!
+epochs = [1,30,60,90,120,150,180,210,240,270,300,400,500] # Try more!
+#epochs = [500] # Try more!
 
-timelsit = []
-for epoch in range(1,501):
-    time_start = time.time()
+timelist = []
+gpulist = []
+# for i in epochs:
+time_start = time.time()
+# Load model
+# m_state_dict = torch.load(f'{i}_pixel_weights_step100.pt')
+# model.load_state_dict(m_state_dict)
+for epoch in range(1,201):
     for step, batch in enumerate(dataloader):
       optimizer.zero_grad()
       t = torch.randint(0, steps, (batch_size,), device=device).long()
@@ -298,18 +303,35 @@ for epoch in range(1,501):
       loss = get_loss(model, batch[0], t)
       loss.backward()
       optimizer.step()
+      # using for testing FID
+      # t = torch.randint(0, steps, (batch_size,), device=device).long()
+      # # print(get_loss(model, batch[0], t))
+      # loss = get_loss(model, batch[0], t)
       if epoch % 1 == 0 and step == 0:
         print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
         sample_plot_image(epoch)
+        # sample_plot_image(epoch, i)
 
     if epoch in epochs:
         # save trained data from the model
-        torch.save(model.state_dict(), f'{epoch}_LittleCharacter.pt')
+        torch.save(model.state_dict(), f'{epoch}_pixel_weights_step100.pt')
 
         time_end = time.time()
         time_sum = time_end - time_start
         print(time_sum)
-        timelsit.append(time_sum)
+        timelist.append(time_sum)
 
-print(timelsit)
+        # using nvidia-smi command get GPU memory
+        result = subprocess.run(['nvidia-smi', '--query-gpu=memory.total,memory.used', '--format=csv,noheader,nounits'],
+                                stdout=subprocess.PIPE)
+        # decode the output
+        output = result.stdout.decode('utf-8')
 
+        # get the memory used
+        for line in output.strip().split('\n'):
+            total, used = line.split(', ')
+            gpulist.append({"total_memory_MB": int(total), "used_memory_MB": int(used)})
+
+
+print(timelist)
+print(gpulist)
