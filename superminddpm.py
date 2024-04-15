@@ -15,9 +15,15 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+import torchvision
 from torchvision.datasets import MNIST
 from torchvision import transforms
 from torchvision.utils import save_image, make_grid
+
+import time
+import psutil
+import os
+import subprocess
 
 
 def ddpm_schedules(beta1: float, beta2: float, T: int) -> Dict[str, torch.Tensor]:
@@ -133,8 +139,7 @@ class DDPM(nn.Module):
 
         return x_i
 
-
-def train_mnist(n_epoch: int = 100, device="cuda:0") -> None:
+def train_mnist(n_epoch: int = 201, device="cuda:0") -> None:
     ddpm = DDPM(eps_model=DummyEpsModel(1), betas=(1e-4, 0.02), n_T=1000)
     ddpm.to(device)
 
@@ -148,36 +153,81 @@ def train_mnist(n_epoch: int = 100, device="cuda:0") -> None:
         download=True,
         transform=tf,
     )
-    dataloader = DataLoader(dataset, batch_size=128, shuffle=True, num_workers=20)
+
+    # smaller the size of dataset
+    train_size = len(dataset) // 4
+    valid_size = len(dataset) - train_size
+
+    # random_split 1/4 to train
+    train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size])
+
+
+    dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=12)
+
+    # data = load_trans_dataset()
+    # dataloader = DataLoader(data, batch_size=batch_size, shuffle=True, drop_last=True)
+
     optim = torch.optim.Adam(ddpm.parameters(), lr=2e-4)
 
-    for i in range(n_epoch):
-        ddpm.train()
-        pbar = tqdm(dataloader)
+    epochs = [1,10,20,30,40,50,60,70,80,90,100] # Try more!
 
+    timelsit = []
+    cpulist = []
+    gpulist = []
+    # for i in epochs:
+    time_start = time.time()
+    for i in epochs:
+        for epoch in range(1,n_epoch):
+            ddpm.train()
+            # pbar = tqdm(dataloader)
+            #
+            #
+            # loss_ema = None
+            # for x, _ in pbar:
+            #     optim.zero_grad()
+            #     x = x.to(device)
+            #     loss = ddpm(x)
+            #     loss.backward()
+            #     if loss_ema is None:
+            #         loss_ema = loss.item()
+            #     else:
+            #         loss_ema = 0.9 * loss_ema + 0.1 * loss.item()
+            #     pbar.set_description(f"Epoch {epoch}|loss: {loss_ema:.4f}")
+            #     optim.step()
 
-        loss_ema = None
-        for x, _ in pbar:
-            optim.zero_grad()
-            x = x.to(device)
-            loss = ddpm(x)
-            loss.backward()
-            if loss_ema is None:
-                loss_ema = loss.item()
-            else:
-                loss_ema = 0.9 * loss_ema + 0.1 * loss.item()
-            pbar.set_description(f"loss: {loss_ema:.4f}")
-            optim.step()
+            # load model state dict
+            state = torch.load(f'{i}_superminddpm_PT.pt')
+            ddpm.load_state_dict(state)
 
-        ddpm.eval()
-        with torch.no_grad():
-            xh = ddpm.sample(16, (1, 28, 28), device)
-            grid = make_grid(xh, nrow=4)
-            save_image(grid, f"./contents/ddpm_sample_{i}.png")
+            ddpm.eval()
+            with torch.no_grad():
+                xh = ddpm.sample(1, (1, 28, 28), device)
+                grid = make_grid(xh, nrow=1)
+                save_image(grid, f"./supermin_MINST_PT/testOutput{i}/testOutput{i}/ddpm_sample_{epoch}.png")
+            print(f"File {i} | Epoch {epoch}")
+        if epoch in epochs:
+            # save trained data from the model
+            torch.save(ddpm.state_dict(), f'{epoch}_superminddpm_PT.pt')
 
-            # save model
-            torch.save(ddpm.state_dict(), f"./ddpm_mnist.pth")
+            time_end = time.time()
+            time_sum = time_end - time_start
+            print(time_sum)
+            timelist.append(time_sum)
 
+            # using nvidia-smi command get GPU memory
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=memory.total,memory.used', '--format=csv,noheader,nounits'],
+                stdout=subprocess.PIPE)
+            # decode the output
+            output = result.stdout.decode('utf-8')
+
+            # get the memory used
+            for line in output.strip().split('\n'):
+                total, used = line.split(', ')
+                gpulist.append({"total_memory_MB": int(total), "used_memory_MB": int(used)})
+
+        print(timelist)
+        print(gpulist)
 
 if __name__ == "__main__":
     train_mnist()
