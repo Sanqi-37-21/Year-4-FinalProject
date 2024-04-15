@@ -48,7 +48,7 @@ def ddpm_schedules(beta1: float, beta2: float, T: int) -> Dict[str, tf.Tensor]:
 
 # block small UNet
 blk = lambda ic, oc: tf.keras.Sequential([
-    tf.keras.layers.Conv2D(filters = oc, kernel_size = 7, padding='same', input_shape = (None, None, ic)),
+    tf.keras.layers.Conv2D(filters = oc, kernel_size = 7, padding='same'),
     tf.keras.layers.BatchNormalization(axis=-1),
     tf.keras.layers.LeakyReLU(alpha=0.01),
 ])
@@ -70,7 +70,7 @@ class DummyEpsModel(tf.keras.Model):
             blk(512, 256),
             blk(256, 128),
             blk(128, 64),
-            tf.keras.layers.Conv2D(filters=n_channel, kernel_size=3, padding='same', input_shape=(None, None, 64)),
+            tf.keras.layers.Conv2D(filters=n_channel, kernel_size=3, padding='same'),
         ])
 
     def call(self, x, t) -> tf.Tensor:
