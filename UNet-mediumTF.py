@@ -114,16 +114,16 @@ class Block(tf.keras.layers.Layer):
         self.time_mlp = tf.keras.layers.Dense(units=out_ch, input_shape=(time_emb_dim,)) # dense is linear in pytorch
         if up:
             #self.conv1 = tf.keras.layers.Conv2D(2 * in_ch, out_ch, 1, padding='same')
-            self.conv1 = tf.keras.layers.Conv2D(filters= out_ch,kernel_size=3 , strides=1, padding='same', input_shape=(None, None, 2*in_ch) )
+            self.conv1 = tf.keras.layers.Conv2D(filters= out_ch,kernel_size=3 , strides=1, padding='same' )
             self.transform = tf.keras.layers.Conv2DTranspose(filters = out_ch, kernel_size = 4, strides = 2, padding = 'same')
             self.nam = 'up'
         else:
             #self.conv1 = tf.keras.layers.Conv2D(in_ch, out_ch, 1, padding='same')
-            self.conv1 = tf.keras.layers.Conv2D(filters = out_ch, kernel_size = 3, strides = 1, padding = 'same', input_shape = (None, None, in_ch))
-            self.transform = tf.keras.layers.Conv2D(filters = out_ch, kernel_size = 4, strides = 2, padding = 'same', input_shape = (None, None, out_ch))
+            self.conv1 = tf.keras.layers.Conv2D(filters = out_ch, kernel_size = 3, strides = 1, padding = 'same')
+            self.transform = tf.keras.layers.Conv2D(filters = out_ch, kernel_size = 4, strides = 2, padding = 'same')
             self.nam = 'down'
         #self.conv2 = tf.keras.layers.Conv2D(out_ch, out_ch, 1, padding='same')
-        self.conv2 = tf.keras.layers.Conv2D(filters = out_ch, kernel_size = 3, strides = (1, 1), padding = 'same', input_shape = (None, None, out_ch))
+        self.conv2 = tf.keras.layers.Conv2D(filters = out_ch, kernel_size = 3, strides = (1, 1), padding = 'same')
         self.bnorm1 = tf.keras.layers.BatchNormalization(axis=-1) #tensorflow didn't define axis as default
         self.bnorm2 = tf.keras.layers.BatchNormalization(axis=-1)
         self.relu = tf.keras.layers.ReLU()
@@ -193,7 +193,7 @@ class SimpleUnet(tf.keras.Model):
         )
 
         # Initial projection PyTorch API Conv2d
-        self.conv0 = tf.keras.layers.Conv2D(filters = down_channels[0], kernel_size = 3, strides = (1, 1), padding = 'same', input_shape = (None, None, image_channels))#tensorflow set stride to 1 make sure same output size
+        self.conv0 = tf.keras.layers.Conv2D(filters = down_channels[0], kernel_size = 3, strides = (1, 1), padding = 'same')#tensorflow set stride to 1 make sure same output size
 
         # Downsample
         self.downs = []
@@ -206,7 +206,7 @@ class SimpleUnet(tf.keras.Model):
             self.ups.append(Block(up_channels[i], up_channels[i + 1], time_emb_dim, up=True))
 
         # Edit: Corrected a bug found by Jakub C (see YouTube comment)
-        self.output1 = tf.keras.layers.Conv2D(filters = out_dim, kernel_size = 1, strides = (1, 1), input_shape = (None, None, 64))
+        self.output1 = tf.keras.layers.Conv2D(filters = out_dim, kernel_size = 1, strides = (1, 1))
 
     def call(self, x, timestep):
         # Embedd time
