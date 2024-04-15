@@ -5,7 +5,6 @@ import tensorflow as tf
 from tensorflow.keras import Model
 import tensorflow_datasets as tfds
 
-
 def ddpm_schedules(beta1: float, beta2: float, T: int) -> Dict[str, tf.Tensor]:
     """
     Returns pre-computed schedules for DDPM sampling, training process.
@@ -34,7 +33,7 @@ def ddpm_schedules(beta1: float, beta2: float, T: int) -> Dict[str, tf.Tensor]:
         "mab_over_sqrtmab": mab_over_sqrtmab_inv,  # (1-\alpha_t)/\sqrt{1-\bar{\alpha_t}}
     }
 
-class DDPM(tf.keras.layers.Layer):
+class DDPM(tf.keras.Model):
     def __init__(
         self,
         eps_model: tf.keras.Model,
@@ -51,16 +50,20 @@ class DDPM(tf.keras.layers.Layer):
         self.n_T = n_T
         self.mse = tf.keras.losses.MeanSquaredError()
 
+    # get loss for traning
     def call(self, x: tf.Tensor) -> tf.Tensor:
         """
         Makes forward diffusion x_t, and tries to guess epsilon value from x_t using eps_model.
         This implements Algorithm 1 in the paper.
         """
 
+        # add size of x[0] number of integers
         _ts = tf.random.uniform(shape=[tf.shape(x)[0]], minval=1, maxval=self.n_T,
                                 dtype=tf.int32)  # t ~ Uniform(0, n_T)
         eps = tf.random.normal(shape=tf.shape(x))  # eps ~ N(0, 1)
+        # \sqrt{\bar{\alpha_t}}
         gathered_sqrtab = tf.gather(self.sqrtab, _ts, axis=0)
+        # \sqrt{1-\bar{\alpha_t}}
         gathered_sqrtmab = tf.gather(self.sqrtmab, _ts, axis=0)
         x_t = (
                 gathered_sqrtab[:, None, None, None] * x
@@ -69,14 +72,14 @@ class DDPM(tf.keras.layers.Layer):
         # We should predict the "error term" from this x_t. Loss is what we return.
         return self.mse(eps, self.eps_model(x_t, _ts / self.n_T)),
 
+    # get sampling
     def sample(self, n_sample: int, size, device) -> tf.Tensor:
-
         x_i = tf.random.normal([n_sample] + list(size))  # x_T ~ N(0, 1)
-
         # This samples accordingly to Algorithm 2. It is exactly the same logic.
-        for i in range(self.n_T, 0, -1):
+        for i in tf.range(self.n_T, 0, -1):
             z = tf.random.normal([n_sample] + list(size)) if i > 1 else 0
             eps = self.eps_model(x_i, i / self.n_T)
+            # delete noise in a loop and also add some noise in this process for better performance
             x_i = (
                 self.oneover_sqrta[i] * (x_i - eps * self.mab_over_sqrtmab[i])
                 + self.sqrt_beta_t[i] * z
